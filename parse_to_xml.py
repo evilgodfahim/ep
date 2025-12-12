@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
 import json
 
-HTML_FILE = "news.html"
+HTML_FILE = "opinion.html"
 XML_FILE = "articles.xml"
 DAILY_FILE_PREFIX = "daily_feed"
 LAST_SEEN_FILE = "last_seen.json"
