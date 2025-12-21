@@ -166,8 +166,9 @@ def scrape_articles():
 
     articles = []
 
+    # Updated selector to match the HTML structure
     for card in soup.select("article.card.card-full.hover-a"):
-        link_tag = card.select_one("a[href]")
+        link_tag = card.select_one("h2.card-title a[href]")
         if not link_tag:
             continue
 
@@ -175,8 +176,7 @@ def scrape_articles():
         if not url:
             continue
 
-        title_tag = card.select_one("h2.card-title a")
-        title = title_tag.get_text(strip=True) if title_tag else None
+        title = link_tag.get_text(strip=True)
         if not title:
             continue
 
@@ -214,14 +214,24 @@ def update_main_xml():
         print("No articles found")
         return
 
+    # DEBUG: Print first few scraped articles
+    print(f"\n📰 First 3 scraped articles:")
+    for art in new_articles[:3]:
+        print(f"  ✓ {art['title'][:60]}...")
+        print(f"    URL: {art['url']}")
+        print(f"    Date: {art['pub']}")
+
     # Load or create root
     if os.path.exists(XML_FILE):
         try:
             tree = ET.parse(XML_FILE)
             root = tree.getroot()
+            print(f"\n✓ Loaded existing {XML_FILE}")
         except ET.ParseError:
+            print(f"\n⚠ Could not parse {XML_FILE}, creating new file")
             root = ET.Element("rss", version="2.0")
     else:
+        print(f"\n⚠ {XML_FILE} does not exist, creating new file")
         root = ET.Element("rss", version="2.0")
 
     channel = root.find("channel")
@@ -234,14 +244,19 @@ def update_main_xml():
     existing_links = set()
     for item in channel.findall("item"):
         lk = item.find("link")
-        if lk is not None:
+        if lk is not None and lk.text:
             existing_links.add(lk.text.strip())
+
+    # DEBUG: Show how many existing links
+    print(f"\n📋 Existing links in XML: {len(existing_links)}")
 
     new_nodes = []
     new_count = 0
+    skipped_count = 0
 
     for art in new_articles:
         if art["url"] in existing_links:
+            skipped_count += 1
             continue
 
         node = ET.Element("item")
@@ -257,6 +272,9 @@ def update_main_xml():
         existing_links.add(art["url"])
         new_count += 1
 
+    print(f"\n➕ Added {new_count} new articles")
+    print(f"⏭  Skipped {skipped_count} duplicate articles")
+
     # Insert at top
     insert_pos = 0
     for child in channel:
@@ -268,15 +286,13 @@ def update_main_xml():
     for i, nd in enumerate(new_nodes):
         channel.insert(insert_pos + i, nd)
 
-    print(f"Added {new_count} new articles")
-
     # Trim
     all_items = channel.findall("item")
     if len(all_items) > MAX_ITEMS:
         to_remove = len(all_items) - MAX_ITEMS
-        for old in all_items[:-MAX_ITEMS]:
+        for old in all_items[-to_remove:]:
             channel.remove(old)
-        print(f"Removed {to_remove} old articles")
+        print(f"✂️  Removed {to_remove} old articles (keeping {MAX_ITEMS} max)")
 
     # Save XML
     tree = ET.ElementTree(root)
@@ -296,10 +312,13 @@ def update_daily():
 
     if last_seen_dt:
         cutoff = last_seen_dt
+        print(f"Using last seen cutoff: {cutoff}")
     else:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        print(f"No last seen, using 24h cutoff: {cutoff}")
 
     master = load_existing(XML_FILE)
+    print(f"Loaded {len(master)} articles from {XML_FILE}")
 
     fresh = []
     seen = set()
@@ -310,10 +329,12 @@ def update_daily():
 
         if link in seen:
             continue
-        
+
         if pub > cutoff:
             fresh.append(item)
             seen.add(link)
+
+    print(f"Found {len(fresh)} fresh articles since cutoff")
 
     if not fresh:
         placeholder = [{
